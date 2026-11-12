@@ -28,9 +28,11 @@ constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dls
 }
 
 /// Texture LOD bias added to Ocarina's mipmapped samplers while FSR upscales. AMD recommends
-/// log2(render / output) - 1: -1.58 for docked 1440p -> 4K.
+/// log2(render / output) - 1: -2.0 for docked 1440p -> 2880p (the upscale target).
+/// Keep this in step with vk_rasterizer.cpp's output_extent: it is a per-backend constant, not
+/// derived from the extent at runtime.
 constexpr float OcarinaFsrLodBias(OcarinaUpscaleBackend backend) {
-    return backend == OcarinaUpscaleBackend::Fsr ? -1.58f : 0.0f;
+    return backend == OcarinaUpscaleBackend::Fsr ? -2.0f : 0.0f;
 }
 
 /// Whether a sampler with that bias keeps it for an image: only docked (handheld isn't measured),

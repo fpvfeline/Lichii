@@ -3655,8 +3655,10 @@ bool RasterizerVulkan::TryOcarinaUpscale(const ComputePipeline& pipeline, bool r
         if (oot_jitter_frame == render_trace_frame) {
             jitter = oot_jitter_offset;
         }
+        // 2.0x the game's 2560x1440 scene, so the 1440p window minifies on an exact 2x texel grid
+        // (keeps vk_ocarina_camera_motion.cpp's composite and this present in step).
         const VkExtent2D output_extent = native_resolution ? extent
-                                         : upscale_4k      ? VkExtent2D{3840, 2160}
+                                         : upscale_4k      ? VkExtent2D{5120, 2880}
                                                            : target_extent;
         const bool recorded = oot_live_dlss->Record(color_view, depth.DepthView(), target_view,
                                                    extent, output_extent, target_extent, oot_motion.current,
@@ -3672,8 +3674,8 @@ bool RasterizerVulkan::TryOcarinaUpscale(const ComputePipeline& pipeline, bool r
             oot_4k_guest_present = VK_NULL_HANDLE;
         }
         oot_dlss_frame = render_trace_frame;
-        // AMD's jitter phase count for FSR: 8 * (output / render width)^2, so 18 for 1440p -> 4K
-        // and 8 for native AA.
+        // AMD's jitter phase count for FSR: 8 * (output / render width)^2, so 32 for 1440p -> 2880p
+        // (18 for 1440p -> 4K) and 8 for native AA.
         const f32 ratio = static_cast<f32>(output_extent.width) / static_cast<f32>(extent.width);
         oot_jitter_phases = std::max(1U, static_cast<u32>(8.0f * ratio * ratio));
         oot_fallback_reason = nullptr;
@@ -4105,8 +4107,8 @@ std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
             oot_live_dlss->Composite4k(info.image_view, render_trace_frame);
             info.image = oot_live_dlss->CompositedImage();
             info.image_view = oot_live_dlss->CompositedView();
-            info.scaled_width = 3840;
-            info.scaled_height = 2160;
+            info.scaled_width = 5120;   // matches the composite's extent
+            info.scaled_height = 2880;
             info.already_upscaled = true;
         } catch (const vk::Exception& error) {
             LOG_WARNING(Render_Vulkan, "Ocarina temporal 4K presentation unavailable: {}", error.what());

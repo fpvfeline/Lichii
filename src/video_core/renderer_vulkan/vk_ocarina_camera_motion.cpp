@@ -538,7 +538,7 @@ public:
             cmd.BindDescriptorSets(VK_PIPELINE_BIND_POINT_COMPUTE, *layout, 0, set, {});
             const u32 enabled = !upscaler.EvaluationFailed();
             cmd.PushConstants(*layout, VK_SHADER_STAGE_COMPUTE_BIT, enabled);
-            cmd.Dispatch(3840 / 8, 2160 / 8, 1);
+            cmd.Dispatch(5120 / 8, 2880 / 8, 1);
             const VkMemoryBarrier complete{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
                 .srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -547,7 +547,7 @@ public:
             cmd.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                 0, complete);
             if (enabled && (!logged || frame % 120 == 0)) {
-                LOG_INFO(Render_Vulkan, "Ocarina temporal presented 3840x2160 frame={}", frame);
+                LOG_INFO(Render_Vulkan, "Ocarina temporal presented 5120x2880 frame={}", frame);
                 logged = true;
             }
         });
@@ -853,7 +853,8 @@ void OcarinaUpscaler::Composite4k(VkImageView native_composite, u64 frame) {
     }
     if (!state.composite_pass) {
         constexpr VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
-        state.composite = CreateOcarinaImage(state.allocator, {3840, 2160}, format,
+        // 2.0x the game's 2560x1440 scene (vk_rasterizer.cpp's output_extent and present must match).
+        state.composite = CreateOcarinaImage(state.allocator, {5120, 2880}, format,
                                             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
         state.composite_view = CreateOcarinaView(state.device, *state.composite, format);
         state.composite_pass = std::make_unique<OcarinaCompositePass>(
