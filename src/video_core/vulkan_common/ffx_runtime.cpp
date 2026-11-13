@@ -180,6 +180,8 @@ std::shared_ptr<const Api> Acquire() {
         reinterpret_cast<PfnFfxDestroyContext>(GetProcAddress(module, "ffxDestroyContext"));
     loaded->query = reinterpret_cast<PfnFfxQuery>(GetProcAddress(module, "ffxQuery"));
     loaded->dispatch = reinterpret_cast<PfnFfxDispatch>(GetProcAddress(module, "ffxDispatch"));
+    // Optional: FSR 4 Frame Generation configures its context, FSR 4 upscaling doesn't.
+    loaded->configure = reinterpret_cast<PfnFfxConfigure>(GetProcAddress(module, "ffxConfigure"));
     if (!loaded->create_context || !loaded->destroy_context || !loaded->query ||
         !loaded->dispatch) {
         LOG_WARNING(Render_Vulkan, "AMD FSR 4: the FidelityFX loader lacks its exports");
@@ -257,6 +259,8 @@ std::shared_ptr<const Api> Acquire() {
         reinterpret_cast<PfnFfxDestroyContext>(dlsym(module, "ffxDestroyContext"));
     loaded->query = reinterpret_cast<PfnFfxQuery>(dlsym(module, "ffxQuery"));
     loaded->dispatch = reinterpret_cast<PfnFfxDispatch>(dlsym(module, "ffxDispatch"));
+    // Optional: FSR 4 Frame Generation configures its context, the fsr4-vk port doesn't.
+    loaded->configure = reinterpret_cast<PfnFfxConfigure>(dlsym(module, "ffxConfigure"));
     if (!loaded->create_context || !loaded->destroy_context || !loaded->query ||
         !loaded->dispatch) {
         LOG_WARNING(Render_Vulkan, "FSR 4: {} lacks the FFX API exports; using FSR 3.1",

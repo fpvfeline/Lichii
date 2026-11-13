@@ -33,7 +33,9 @@ constexpr u32 LSFG_RECURRENCE_FRAMES = 2;
 constexpr auto ACTIVITY_LOG_INTERVAL = std::chrono::seconds(10);
 
 [[nodiscard]] std::string ModeText(Settings::FrameGenType active) {
-    const char* type = active == Settings::FrameGenType::Fsr3 ? "FSR3" : "LSFG";
+    const char* type = active == Settings::FrameGenType::Fsr4   ? "FSR4"
+                       : active == Settings::FrameGenType::Fsr3 ? "FSR3"
+                                                                : "LSFG";
     const u32 target_rate = Settings::values.frame_gen_target_rate.GetValue();
     if (target_rate != 0) {
         return fmt::format("{} up to {}x towards {} FPS", type, Settings::MAX_FRAME_GEN_MULTIPLIER,
@@ -257,10 +259,19 @@ void FrameGen::Process(const Device& device, Frame* frame, VkFormat format,
     generated = false;
 
     const Settings::FrameGenType chosen = Settings::values.frame_gen_type.GetValue();
-    const Settings::FrameGenType type =
-        chosen == Settings::FrameGenType::NvidiaDlssG
-            ? VideoCore::ActiveFrameGenType(chosen, DlssgBlocked())
-            : chosen;
+    // What AMD's runtime offers is the same for the whole session; asking the dll costs.
+    if (chosen == Settings::FrameGenType::Fsr4 && !fsr4_runtime) {
+        fsr4_runtime = FsrFrameGen::IsAvailable(device);
+    }
+    const Settings::FrameGenType type = VideoCore::ActiveFrameGenType(
+        chosen, DlssgBlocked(),
+        VideoCore::BlockedFsr4({
+            .program_id = Settings::GetCurrentProgramID(),
+            // A frame generator that fails part-way through the session counts as blocked, so the
+            // next rebuild goes to the built-in FSR 3.1 one.
+            .runtime = fsr4_runtime.value_or(false) && !fsr4_blocked &&
+                       !(fsr4_chain && fsr4_chain->Failed()),
+        }));
     if (type == Settings::FrameGenType::Lsfg && !shaders) {
         shaders.emplace(device);
     }
@@ -273,10 +284,11 @@ void FrameGen::Process(const Device& device, Frame* frame, VkFormat format,
         } else if (nvidia_frame_gen) {
             SetState(VideoCore::FrameGenState::NvidiaFrameGen, format);
         }
-        if (chain || fsr3_chain) {
+        if (chain || fsr3_chain || fsr4_chain) {
             scheduler.Finish();
             chain.reset();
             fsr3_chain.reset();
+            fsr4_chain.reset();
         }
         warm_streak = 0;
         if (unavailable && Settings::values.frame_gen.GetValue()) {
@@ -299,7 +311,7 @@ void FrameGen::Process(const Device& device, Frame* frame, VkFormat format,
 
     const VkExtent2D extent{.width = frame->width, .height = frame->height};
     const f32 flow_scale = ConfiguredFlowScale(peak_guest_extent, extent);
-    if ((!chain && !fsr3_chain) || built_type != type || built_extent.width != extent.width ||
+    if ((!chain && !fsr3_chain && !fsr4_chain) || built_type != type || built_extent.width != extent.width ||
         built_extent.height != extent.height || built_format != format ||
         built_flow_scale != flow_scale) {
         Rebuild(device, extent, format, flow_scale, type);
@@ -312,10 +324,22 @@ void FrameGen::Process(const Device& device, Frame* frame, VkFormat format,
     const bool warm = plan.warm && count + 1 >= LSFG_REQUIRED_FRAMES;
     warm_streak = warm ? warm_streak + 1 : 0;
     generated = warm && warm_streak >= LSFG_RECURRENCE_FRAMES && plan.generations > 0;
-    generated_frames.fetch_add(GeneratedFrameCount(), std::memory_order_relaxed);
-    LogActivity();
 
     const bool use_fsr3 = type == Settings::FrameGenType::Fsr3;
+    const bool use_fsr4 = type == Settings::FrameGenType::Fsr4;
+
+    if (use_fsr4 && fsr4_chain) {
+        scheduler.RequestOutsideRenderPassOperationContext();
+        // AMD's generator needs the depth, the motion vectors and the camera the Ocarina rasterizer
+        // noted for this frame; without them the frame is simply not generated.
+        if (!fsr4_chain->Process(device, scheduler, *frame->image,
+                                 static_cast<u32>(plan.generations), count)) {
+            generated = false;
+        }
+    }
+
+    generated_frames.fetch_add(GeneratedFrameCount(), std::memory_order_relaxed);
+    LogActivity();
 
     if (use_fsr3 && fsr3_chain) {
         scheduler.RequestOutsideRenderPassOperationContext();
@@ -439,7 +463,11 @@ size_t FrameGen::GeneratedFrameCount() const {
 void FrameGen::GenerateInto(const Device& device, Frame* destination, size_t generation) {
     const bool use_fsr3 = built_type == Settings::FrameGenType::Fsr3;
 
-    if (use_fsr3 && fsr3_chain) {
+    if (built_type == Settings::FrameGenType::Fsr4 && fsr4_chain) {
+        scheduler.RequestOutsideRenderPassOperationContext();
+        fsr4_chain->Generate(device, scheduler, *destination->image,
+                             static_cast<u32>(generation));
+    } else if (use_fsr3 && fsr3_chain) {
         const f32 blend = static_cast<f32>(generation + 1) / static_cast<f32>(last_generations + 1);
         const f32 flow_scale = ConfiguredFlowScale(peak_guest_extent, built_extent);
 
@@ -467,11 +495,24 @@ void FrameGen::Rebuild(const Device& device, VkExtent2D extent, VkFormat format,
     scheduler.Finish();
     chain.reset();
     fsr3_chain.reset();
+    fsr4_chain.reset();
 
     built_flow_scale = flow_scale;
     built_type = type;
 
-    if (built_type == Settings::FrameGenType::Fsr3) {
+    if (built_type == Settings::FrameGenType::Fsr4) {
+        try {
+            fsr4_chain.emplace(device, memory_allocator, extent, format);
+        } catch (const vk::Exception& exception) {
+            LOG_WARNING(Render_Vulkan,
+                        "AMD FSR 4 frame generation can't start at {}x{} ({}): the built-in "
+                        "FSR 3.1 frame generator runs instead",
+                        extent.width, extent.height, exception.what());
+            fsr4_blocked = true;
+            built_type = Settings::FrameGenType::Fsr3;
+            fsr3_chain.emplace(device, memory_allocator, extent, format);
+        }
+    } else if (built_type == Settings::FrameGenType::Fsr3) {
         fsr3_chain.emplace(device, memory_allocator, extent, format);
     } else {
         chain.emplace(device, memory_allocator, *shaders, extent, format, built_flow_scale);

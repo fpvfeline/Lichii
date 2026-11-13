@@ -25,6 +25,9 @@ struct Api {
     PfnFfxDestroyContext destroy_context{};
     PfnFfxQuery query{};
     PfnFfxDispatch dispatch{};
+    /// Null when the library doesn't export it (the fsr4-vk port doesn't). Only FSR 4 Frame
+    /// Generation needs it.
+    PfnFfxConfigure configure{};
 };
 
 /// On Windows, loads AMD's runtime after checking every file, or null when a file is missing,

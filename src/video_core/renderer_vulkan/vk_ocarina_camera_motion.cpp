@@ -14,6 +14,9 @@
 #include "video_core/renderer_vulkan/vk_compute_pass.h"
 #include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
 #include "video_core/renderer_vulkan/vk_fsr4_upscaler.h"
+#ifdef HAS_LSFG
+#include "video_core/renderer_vulkan/present/fsr_frame_gen.h"
+#endif
 #include "video_core/host_shaders/ocarina_dlss_color_comp_spv.h"
 #include "video_core/host_shaders/ocarina_dlss_output_comp_spv.h"
 #include "video_core/host_shaders/ocarina_dlss_4k_composite_comp_spv.h"
@@ -756,6 +759,8 @@ struct OcarinaUpscaler::Impl {
     /// which didn't evaluate it.
     bool output_fsr4{};
     std::optional<std::chrono::steady_clock::time_point> last_evaluation;
+    /// The last frame FSR 4 Frame Generation was noted for, to get its frame time from.
+    std::optional<std::chrono::steady_clock::time_point> frame_gen_evaluation;
 
     bool UsesFsr4() const {
         return fsr4 && !fsr4->Failed();
@@ -1002,6 +1007,35 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
     const bool reset = !state.last_frame || frame != *state.last_frame + 1 ||
                        !std::ranges::equal(previous, state.last_view_projection,
                                            [](f32 a, f32 b) { return std::abs(a - b) < 0.001f; });
+#ifdef HAS_LSFG
+    if (Settings::values.frame_gen.GetValue() &&
+        Settings::values.frame_gen_type.GetValue() == Settings::FrameGenType::Fsr4) {
+        // AMD's frame generator is handed what the DLSS and FSR 4 evaluations get: the depth, the
+        // motion vectors to the previous frame, the camera and the jitter the scene was drawn with.
+        // Vulkan::FrameGen takes them for the frame it composites.
+        const auto frame_gen_now = std::chrono::steady_clock::now();
+        const f32 frame_gen_elapsed = state.frame_gen_evaluation
+                                          ? std::chrono::duration<f32, std::milli>(
+                                                frame_gen_now - *state.frame_gen_evaluation)
+                                                .count()
+                                          : 16.67f;
+        state.frame_gen_evaluation = frame_gen_now;
+        Vulkan::NoteFsrFrameGenInputs({
+            .depth = depth_image,
+            .depth_format = VK_FORMAT_D32_SFLOAT,
+            .motion_vectors = *resources.motion,
+            .motion_format = MOTION_FORMAT,
+            .render_size = extent,
+            .camera_view_projection = current,
+            // The scene carries no TAA jitter to take away (the rasterizer's jitter is a draw
+            // offset), which is what the DLSS Frame Generation inputs pass too.
+            .jitter = {0.0f, 0.0f},
+            .frame_time_ms = frame_gen_elapsed,
+            .vertical_fov = 2.0f * std::atan(1.0f / projection_y),
+            .reset = reset,
+        });
+    }
+#endif
 #ifdef EGLANTINE_STREAMLINE
     if (state.dlss && !state.dlss->Upscale({
             .color = {*resources.color_view, *resources.color, LIVE_COLOR_FORMAT, COLOR_RANGE,

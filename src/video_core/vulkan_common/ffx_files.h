@@ -36,13 +36,16 @@ struct File {
     std::string_view sha256; ///< Lower-case hex.
 };
 
-/// The loader, which loads the upscaler next to it.
+/// The loader, which loads the effects next to it.
 inline constexpr std::array FILES{
     File{"Kits/FidelityFX/signedbin/amd_fidelityfx_loader_vk.dll", "amd_fidelityfx_loader_vk.dll",
          39184, "38a56a01fb3565c0757d9f5c1e4e69de4b65e5f2e5769b323b200dc1f142bab9"},
     File{"Kits/FidelityFX/signedbin/amd_fidelityfx_upscaler_vk.dll",
          "amd_fidelityfx_upscaler_vk.dll", 36135696,
          "4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7"},
+    File{"Kits/FidelityFX/signedbin/amd_fidelityfx_framegeneration_vk.dll",
+         "amd_fidelityfx_framegeneration_vk.dll", 36806928,
+         "d002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4"},
 };
 
 /// The user folder's "fidelityfx" folder.

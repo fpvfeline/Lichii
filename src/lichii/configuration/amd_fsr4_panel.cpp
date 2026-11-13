@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include <QApplication>
 #include <QCryptographicHash>
@@ -29,6 +30,7 @@
 #include "common/common_types.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
+#include "common/settings.h"
 #include "video_core/vulkan_common/ffx_files.h"
 #include "lichii/configuration/amd_fsr4_panel.h"
 
@@ -48,6 +50,7 @@ QString PathText(const std::filesystem::path& path) {
     return QString::fromStdWString(path.wstring());
 }
 
+/// The size of the files the panel downloads: every file of the pinned release.
 u64 DownloadSize() {
     u64 total = 0;
     for (const FfxRuntime::File& file : FfxRuntime::FILES) {
@@ -152,11 +155,16 @@ void AmdFsr4Panel::showEvent(QShowEvent* event) {
 
 void AmdFsr4Panel::Refresh() {
 #if defined(__linux__)
+    // FSR 4 Frame Generation runs off AMD's frame generator dll, which the fsr4-vk port does not
+    // ship: on Linux the emulator's own FSR 3.1 frame generator is what runs.
+    const bool fg_wanted = Settings::values.frame_gen.GetValue() &&
+                           Settings::values.frame_gen_type.GetValue() ==
+                               Settings::FrameGenType::Fsr4;
     const std::filesystem::path library = FfxRuntime::PortLibrary();
     const bool ready = !library.empty();
     icon_label->setText(ready ? QStringLiteral("<span style=\"color:#2ea043\">&#10004;</span>")
                               : QStringLiteral("<span style=\"color:#d29922\">&#9888;</span>"));
-    status_label->setText(
+    QString text =
         ready ? Tr("<b>Ready.</b> Found fsr4-vk, the community Vulkan port of FSR 4 (not AMD's "
                    "official FSR 4). It runs if the GPU and driver support it; otherwise FSR 3.1 "
                    "does.")
@@ -165,23 +173,39 @@ void AmdFsr4Panel::Refresh() {
                    "used.")
                     .arg(QString::fromUtf8(
                         FfxRuntime::PORT_LIBRARY.data(),
-                        static_cast<qsizetype>(FfxRuntime::PORT_LIBRARY.size()))));
+                        static_cast<qsizetype>(FfxRuntime::PORT_LIBRARY.size())));
+    if (fg_wanted) {
+        text += Tr(" FSR 4 Frame Generation is not in the port, so the emulator's own FSR 3.1 "
+                   "frame generator runs.");
+    }
+    status_label->setText(text);
     status_label->setToolTip(ready ? PathText(library)
                                    : Tr("Folder: %1").arg(PathText(FfxRuntime::Folder())));
 #else
+    // FSR 4 runs off AMD's loader, upscaler and frame generator dlls: one set of pinned files that
+    // the panel downloads and checks together, whichever effect is chosen. The emulator logs and
+    // keeps its built-in FSR 3.1 paths when AMD's runtime doesn't offer an effect for the GPU.
     const bool ready = FfxRuntime::FilesPresent();
     const QString version = QString::fromUtf8(FfxRuntime::SDK_VERSION.data(),
                                               static_cast<qsizetype>(FfxRuntime::SDK_VERSION.size()));
     icon_label->setText(ready ? QStringLiteral("<span style=\"color:#2ea043\">&#10004;</span>")
                               : QStringLiteral("<span style=\"color:#d29922\">&#9888;</span>"));
+    QString names;
+    for (const FfxRuntime::File& file : FfxRuntime::FILES) {
+        if (!names.isEmpty()) {
+            names += file.name == FfxRuntime::FILES.back().name ? Tr(" and ") : Tr(", ");
+        }
+        names += QString::fromUtf8(file.name.data(), static_cast<qsizetype>(file.name.size()));
+    }
     status_label->setText(
         ready ? Tr("<b>Ready.</b> Found AMD's FidelityFX runtime from FidelityFX SDK %1. FSR 4 runs "
                    "if AMD's driver offers it for this GPU; otherwise FSR 3.1 does.")
                     .arg(version)
               : Tr("<b>AMD's files needed:</b> the FidelityFX runtime from AMD's FidelityFX SDK %1 "
-                   "(amd_fidelityfx_loader_vk.dll and amd_fidelityfx_upscaler_vk.dll). Until then, "
+                   "(%2). Until then, "
                    "FSR 3.1 is used.")
-                    .arg(version));
+                    .arg(version)
+                    .arg(names));
     status_label->setToolTip(Tr("Folder: %1").arg(PathText(FfxRuntime::Folder())));
     download_button->setText(
         Tr("Download from AMD (%1 MB)").arg((DownloadSize() + (1 << 20) - 1) >> 20));
@@ -219,8 +243,9 @@ void AmdFsr4Panel::Download() {
     dialog.setWindowTitle(Tr("Download AMD FSR 4"));
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
     QLabel* intro = new QLabel(
-        Tr("Lichii will download amd_fidelityfx_loader_vk.dll and amd_fidelityfx_upscaler_vk.dll "
-           "from AMD's FidelityFX SDK %1 release on GitHub into %2.<br>These files are AMD's, under "
+        Tr("Lichii will download AMD's FidelityFX runtime for FSR 4: the loader, the upscaler "
+           "and the frame generator, from AMD's FidelityFX SDK %1 release on GitHub into %2.<br>"
+           "These files are AMD's, under "
            "AMD's licence terms below. Lichii checks AMD's signature before using them.")
             .arg(QString::fromUtf8(FfxRuntime::SDK_VERSION.data(),
                                    static_cast<qsizetype>(FfxRuntime::SDK_VERSION.size())),
