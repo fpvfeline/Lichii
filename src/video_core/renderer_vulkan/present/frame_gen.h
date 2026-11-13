@@ -14,6 +14,7 @@
 #include "video_core/renderer_vulkan/present/lsfg_chain.h"
 #include "video_core/renderer_vulkan/present/lsfg_shaders.h"
 #include "video_core/renderer_vulkan/present/fsr3_frame_gen.h"
+#include "video_core/renderer_vulkan/present/fsr_frame_gen.h"
 #include "video_core/vulkan_common/vulkan_memory_allocator.h"
 
 namespace Vulkan {
@@ -62,6 +63,7 @@ private:
     std::optional<LsfgShaders> shaders;
     std::optional<LsfgChain> chain;
     std::optional<Fsr3FrameGen> fsr3_chain;
+    std::optional<FsrFrameGen> fsr4_chain;
     FrameGenPacer pacer;
     FrameGenPlan plan{};
     VkExtent2D peak_guest_extent{};
@@ -76,6 +78,10 @@ private:
     bool generated{};
     bool unavailable{};
     bool dumped{};
+    /// Cached FfxRuntime query: asking the DLL every frame costs. Nullopt until the first frame.
+    std::optional<bool> fsr4_runtime;
+    /// Set when AMD's frame generator threw for this size; FSR 3.1 takes over for the session.
+    bool fsr4_blocked{};
     std::atomic<VideoCore::FrameGenState> state{VideoCore::FrameGenState::Pending};
     std::atomic<u64> generated_frames{};
     struct {

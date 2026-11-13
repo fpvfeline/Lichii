@@ -324,8 +324,9 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "settings, \"Use NVIDIA DLSS\" on and NVIDIA's files from the NVIDIA DLSS panel. "
               "It takes the game's depth and motion vectors from the DLSS evaluation, so it runs "
               "in The Legend of Zelda: Ocarina of Time only, docked, with DLSS as its upscaler. "
-              "Other games, and scRGB HDR output, use Optical Flow Interpolation instead.\nVSync "
-              "is off while it runs. Choosing it takes effect when a game starts."));
+              "Other games, and scRGB HDR output, use Optical Flow Interpolation instead.\n"
+              "NVIDIA's frame generation runs with VSync off; AMD's and the built-in generator "
+              "follow the VSync Mode setting. Choosing this takes effect when a game starts."));
     INSERT(Settings, frame_gen_multiplier, tr("Frame Generation Multiplier"), QString());
     INSERT(Settings, frame_gen_target_rate, tr("Target Frame Rate"), QString());
     INSERT(Settings, frame_gen_flow_scale_auto, tr("Auto Flow Scale"), QString());
@@ -679,6 +680,8 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                               PAIR(FrameGenType, Lsfg, tr("Lossless Scaling (LSFG)")),
                               PAIR(FrameGenType, Fsr3, tr("Optical Flow Interpolation (built-in)")),
                               PAIR(FrameGenType, NvidiaDlssG, tr("NVIDIA DLSS Frame Generation")),
+                              PAIR(FrameGenType, Fsr4,
+                                   tr("AMD FSR 4 Frame Generation (FidelityFX runtime)")),
                           }});
     translations->insert({Settings::EnumMetadata<Settings::ScalingFilter>::Index(),
                           {

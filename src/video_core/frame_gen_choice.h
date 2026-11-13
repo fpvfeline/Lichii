@@ -46,11 +46,38 @@ struct DlssgSession {
     return DlssgBlock::None;
 }
 
-/// The frame generation that runs: the chosen type, except that NVIDIA DLSS Frame Generation
-/// gives way to the built-in optical flow interpolation (FSR3) while it is blocked.
+/// Why AMD FSR 4 Frame Generation can't run this session.
+enum class Fsr4Block : u8 {
+    None,
+    NotOcarina, ///< No other game hands FSR 4 Frame Generation the depth, vectors and camera
+    NoRuntime,  ///< AMD's FidelityFX runtime is missing, or offers no FSR 4 generator for the GPU
+};
+
+struct Fsr4Session {
+    u64 program_id; ///< The running game
+    bool runtime;   ///< The FFX runtime is loaded and offers an FSR 4 frame generator
+};
+
+[[nodiscard]] constexpr Fsr4Block BlockedFsr4(const Fsr4Session& session) {
+    if (session.program_id != OCARINA_PROGRAM_ID) {
+        return Fsr4Block::NotOcarina;
+    }
+    if (!session.runtime) {
+        return Fsr4Block::NoRuntime;
+    }
+    return Fsr4Block::None;
+}
+
+/// The frame generation that runs: the chosen type, except that NVIDIA DLSS Frame Generation and
+/// AMD FSR 4 Frame Generation give way to the built-in optical flow interpolation (Fsr3) while the
+/// one the user chose is blocked.
 [[nodiscard]] constexpr Settings::FrameGenType ActiveFrameGenType(Settings::FrameGenType chosen,
-                                                                  DlssgBlock block) {
-    if (chosen == Settings::FrameGenType::NvidiaDlssG && block != DlssgBlock::None) {
+                                                                  DlssgBlock dlssg,
+                                                                  Fsr4Block fsr4) {
+    if (chosen == Settings::FrameGenType::NvidiaDlssG && dlssg != DlssgBlock::None) {
+        return Settings::FrameGenType::Fsr3;
+    }
+    if (chosen == Settings::FrameGenType::Fsr4 && fsr4 != Fsr4Block::None) {
         return Settings::FrameGenType::Fsr3;
     }
     return chosen;

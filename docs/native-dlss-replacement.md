@@ -88,11 +88,13 @@ the game keeps its own pass whenever DLSS is off, unavailable or fails to start.
 - FSR 4 (Windows, AMD's driver, off by default): with "Use AMD FSR 4 in place of FSR 3.1" on,
   the same inputs, jitter and RCAS setting go to AMD's FSR 4 through AMD's FidelityFX runtime
   (FidelityFX SDK 2.4.0, FSR Upscaling 4.1.2). Nothing of AMD's ships with Lichii: the setting's
-  panel downloads `amd_fidelityfx_loader_vk.dll` and `amd_fidelityfx_upscaler_vk.dll` from
-  the SDK's GitHub repository at the release commit into the user folder's `fidelityfx` folder,
-  after showing AMD's licence. Each file must match its pinned size and SHA-256
-  (`vulkan_common/ffx_files.h`) and carry AMD's Authenticode signature, checked after the
-  download and again before loading. AMD's runtime picks the model (FP8 on RDNA 4, INT8 on RDNA 3
+  panel downloads `amd_fidelityfx_loader_vk.dll`, `amd_fidelityfx_upscaler_vk.dll` and
+  `amd_fidelityfx_framegeneration_vk.dll` from the SDK's GitHub repository at the release commit
+  into the user folder's `fidelityfx` folder, after showing AMD's licence. The three are one set
+  of pinned files, downloaded and checked together whichever effect is chosen, so there is a
+  single whole-set check: the set must match its pinned sizes and SHA-256
+  (`vulkan_common/ffx_files.h`) and every file must carry AMD's Authenticode signature, checked
+  after the download and, for the set once, before loading. AMD's runtime picks the model (FP8 on RDNA 4, INT8 on RDNA 3
   and RDNA 2); the setting is only shown for those GPUs. `VK_EXT_shader_float8` and the
   `shaderFloat16` device feature are enabled for it only while the setting is on. FSR 3.1
   stays created and takes over if the files are missing or don't check out, AMD's runtime offers
@@ -117,6 +119,17 @@ the game keeps its own pass whenever DLSS is off, unavailable or fails to start.
   features are enabled only while the setting is on with RADV. Anything missing, a missing
   library or a failed context or dispatch leaves FSR 3.1 running, and the log names the active
   upscaler and why. Ported from #915's loader; untested on AMD hardware so far.
+- FSR 4 Frame Generation (Ocarina of Time only, off by default, Windows): `frame_gen_type = fsr4`
+  runs AMD's frame generator `amd_fidelityfx_framegeneration_vk.dll` off the same FFX API and the
+  same pinned-file set as the upscaler, fed the Ocarina inputs the DLSS FG chain already collects
+  (game motion vectors, depth, camera, jitter). The generated frames come back into Lichii's own
+  present images, so pacing, the present manager and the FG status bar work as they do for DLSS FG.
+  It keeps the VSync Mode the setting picks, like the built-in generator does: FIFO by default, which
+  lands every generated frame on a scan-out boundary, Mailbox lets the emulator's pacer pace instead
+  of the display, which is what AMD's driver-side flip metering does for its own swapchain. NVIDIA's
+  DLSS-G forces an unlocked present mode instead. The frame generator is one of the pinned files,
+  so a partial set blocks every FFX effect, not just FG. Where the runtime offers no FSR 4 FG (the Linux fsr4-vk port, an older runtime, or a
+  GPU it rejects) the emulator's own FSR 3.1 frame generator runs and the log says which.
 - #644 (`82494c4820`, `74a2d20c90`, `4352c06bbf`) supplies the effects capture, used by FSR only
   (DLSS gets no bias mask and runs as before). FSR uses its R16F current/history bias as both
   reactive and transparency/composition masks; missing capture uses zero masks, not stale
