@@ -3,6 +3,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#define _USE_STD_VECTOR_ALGORITHMS 0
 #include <algorithm>
 #include <array>
 #include <bit>
