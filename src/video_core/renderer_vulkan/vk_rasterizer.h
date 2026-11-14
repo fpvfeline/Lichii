@@ -316,6 +316,10 @@ private:
 
     u32 draw_counter = 0;
     std::optional<u64> oot_camera_sample_frame;
+    /// Which camera gate last rejected a candidate draw this frame, so the fallback log names the
+    /// gate that missed instead of blaming all of them at once.
+    mutable std::optional<u64> oot_camera_gate_frame;
+    mutable const char* oot_camera_gate{};
     mutable std::optional<VideoCommon::OcarinaUpscaleBackend> oot_backend;
     /// The game started at the DLSS Performance render scale (1920x1080).
     bool oot_performance_scale{};

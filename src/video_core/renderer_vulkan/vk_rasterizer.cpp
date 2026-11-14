@@ -1349,8 +1349,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
         if (scene_id) {
             const auto& scene = texture_cache.GetImageView(scene_id);
             if (scene.format == VideoCore::Surface::PixelFormat::B10G11R11_FLOAT &&
-                scene.size.width == oot_motion.extent.width &&
-                scene.size.height == oot_motion.extent.height && !scene.IsRescaled() &&
+                oot_motion.SceneSized(scene.size.width, scene.size.height) && !scene.IsRescaled() &&
                 scene.range == VideoCommon::SubresourceRange{}) {
                 oot_effects_scene = scene.Handle(Shader::TextureType::Color2D);
                 oot_effects_address = scene.gpu_addr;
@@ -3228,13 +3227,22 @@ void RasterizerVulkan::TrackOcarinaCamera() {
         return;
     }
 
+    // Records which gate rejected this frame's candidate draw, so the fallback log can say which
+    // one missed. The last candidate draw of a frame is the one worth blaming.
+    const auto rejected = [this](const char* why) {
+        oot_camera_gate_frame = render_trace_frame;
+        oot_camera_gate = why;
+    };
+
     const auto& targets = texture_cache.GetRenderTargets();
     if (!targets.color_buffer_ids[0] || !targets.depth_buffer_id) {
+        rejected("no scene color/depth target");
         return;
     }
     const auto& color = texture_cache.GetImageView(targets.color_buffer_ids[0]);
     if (color.size.width < 640 || color.size.height < 360 ||
         color.format != VideoCore::Surface::PixelFormat::B10G11R11_FLOAT) {
+        rejected("scene color target is another format or too small");
         return;
     }
     // Reflections and half-size passes share the camera layout; the upscale reads the largest.
@@ -3250,19 +3258,31 @@ void RasterizerVulkan::TrackOcarinaCamera() {
     if (!binding.enabled || binding.address == 0 || binding.size < VideoCommon::OcarinaCameraBytes ||
         !gpu_memory->IsFullyMappedRange(binding.address, VideoCommon::OcarinaCameraBytes) ||
         !gpu_memory->IsContinuousRange(binding.address, VideoCommon::OcarinaCameraBytes)) {
+        rejected("camera const buffer isn't bound in full");
         return;
     }
     const auto device_address = gpu_memory->GpuToCpuAddress(binding.address);
-    if (!device_address ||
-        buffer_cache.IsRegionGpuModified(*device_address, VideoCommon::OcarinaCameraBytes)) {
+    if (!device_address) {
+        rejected("camera const buffer has no host address");
+        return;
+    }
+    if (buffer_cache.IsRegionGpuModified(*device_address, VideoCommon::OcarinaCameraBytes)) {
+        rejected("camera buffer is written on the GPU");
         return;
     }
     VideoCommon::OcarinaCameraBuffer values;
     device_memory.ReadBlockUnsafe(*device_address, values.data(), sizeof(values));
+    // Both backends take a padded scene target: the camera's own extent is kept next to the
+    // target size, so a few pixels of padding (cutscene letterboxing, the DLSS Balanced pass) no
+    // longer decides whether FSR gets the frame.
     const auto camera = VideoCommon::DecodeOcarinaCamera(
-        values, color.size.width, color.size.height,
-        oot_backend == VideoCommon::OcarinaUpscaleBackend::Dlss);
+        values, color.size.width, color.size.height, true);
     if (camera.issue != VideoCommon::OcarinaCameraIssue::None) {
+        rejected(camera.issue == VideoCommon::OcarinaCameraIssue::Extent
+                    ? "camera scene size is off the target by too much"
+                    : camera.issue == VideoCommon::OcarinaCameraIssue::Projection
+                          ? "camera uses another projection convention"
+                          : "camera const buffer is short");
         return;
     }
     oot_camera_sample_frame = render_trace_frame;
@@ -3291,7 +3311,8 @@ void RasterizerVulkan::UpdateOcarinaJitter() {
     std::array<f32, 2> want{};
     // Only while FSR replaced the previous frame's upscale: a frame the game upscales itself
     // would show the offset as a shake. Only draws that depth-test against the scene depth at
-    // the scene size, so a depth pre-pass and the colour passes move together; shadow maps,
+    // the scene size or its padded target size, so a depth pre-pass and the colour passes move
+    // together; shadow maps,
     // half-size passes and full-screen passes (which keep the depth bound without using it, as
     // #678 found, some with depth writes on: with the test off nothing writes depth) stay put.
     const auto& regs = maxwell3d->regs;
@@ -3300,8 +3321,7 @@ void RasterizerVulkan::UpdateOcarinaJitter() {
         const auto& targets = texture_cache.GetRenderTargets();
         if (targets.depth_buffer_id) {
             const auto& depth = texture_cache.GetImageView(targets.depth_buffer_id);
-            if (depth.size.width == oot_motion.extent.width &&
-                depth.size.height == oot_motion.extent.height && !depth.IsRescaled()) {
+            if (oot_motion.SceneSized(depth.size.width, depth.size.height) && !depth.IsRescaled()) {
                 // Halton (2, 3) with AMD's phase count for the last FSR frame's scale.
                 const u32 index = static_cast<u32>(render_trace_frame % oot_jitter_phases) + 1;
                 want = {Halton(index, 2) - 0.5f, Halton(index, 3) - 0.5f};
@@ -3468,7 +3488,8 @@ bool RasterizerVulkan::TryOcarinaUpscale(const ComputePipeline& pipeline, bool r
         return false;
     };
     if (oot_camera_sample_frame != render_trace_frame) {
-        return fail("no scene camera this frame");
+        return fail(oot_camera_gate_frame == render_trace_frame && oot_camera_gate
+                       ? oot_camera_gate : "no scene camera candidate");
     }
     if (oot_motion.depth_frame != render_trace_frame) {
         return fail("no scene depth this frame");
@@ -3522,7 +3543,7 @@ bool RasterizerVulkan::TryOcarinaUpscale(const ComputePipeline& pipeline, bool r
                          std::abs(static_cast<int>(extent.width * 9) -
                                   static_cast<int>(extent.height * 16)) <= 32 &&
                          target.size.width == 2560 && target.size.height == 1440
-        : native_size ? target.size.width == extent.width && target.size.height == extent.height
+        : native_size ? oot_motion.SceneSized(target.size.width, target.size.height)
                       : target.size.width == extent.width * 4 / 3 &&
                             target.size.height == extent.height * 4 / 3;
     if (!valid_extents || !color.BackingImage() || !target.BackingImage() ||
