@@ -90,6 +90,9 @@ void BlitScreen::SetWindowAdaptPass(const Device& device) {
     case Settings::ScalingFilter::Mmpx:
         window_adapt = MakeMmpx(device, swapchain_view_format);
         break;
+    case Settings::ScalingFilter::Kaiser3:
+        window_adapt = MakeKaiser3(device, swapchain_view_format);
+        break;
     case Settings::ScalingFilter::Fsr:
     case Settings::ScalingFilter::Fsr3:
     case Settings::ScalingFilter::Sgsr:

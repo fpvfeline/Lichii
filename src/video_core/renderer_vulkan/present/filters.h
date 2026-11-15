@@ -23,5 +23,6 @@ std::unique_ptr<WindowAdaptPass> MakeLanczos(const Device& device, VkFormat fram
 std::unique_ptr<WindowAdaptPass> MakeScaleForce(const Device& device, VkFormat frame_format);
 std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device, VkFormat frame_format);
 std::unique_ptr<WindowAdaptPass> MakeMmpx(const Device& device, VkFormat frame_format);
+std::unique_ptr<WindowAdaptPass> MakeKaiser3(const Device& device, VkFormat frame_format);
 
 } // namespace Vulkan

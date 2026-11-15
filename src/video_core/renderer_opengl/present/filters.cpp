@@ -17,6 +17,7 @@
 #include "video_core/host_shaders/present_bspline_frag.h"
 #include "video_core/host_shaders/present_zero_tangent_frag.h"
 #include "video_core/host_shaders/present_mmpx_frag.h"
+#include "video_core/host_shaders/present_kaiser3_frag.h"
 #include "video_core/renderer_opengl/present/filters.h"
 #include "video_core/renderer_opengl/present/util.h"
 
@@ -81,6 +82,11 @@ std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device) {
 std::unique_ptr<WindowAdaptPass> MakeMmpx(const Device& device) {
     return std::make_unique<WindowAdaptPass>(device, CreateNearestNeighborSampler(),
                                              HostShaders::PRESENT_MMPX_FRAG);
+}
+
+std::unique_ptr<WindowAdaptPass> MakeKaiser3(const Device& device) {
+    return std::make_unique<WindowAdaptPass>(device, CreateBilinearSampler(),
+                                             HostShaders::PRESENT_KAISER3_FRAG);
 }
 
 } // namespace OpenGL

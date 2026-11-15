@@ -94,6 +94,9 @@ Various graphical filters exist - each of them aimed at a specific target/image 
   - **Pros**: Optimized for Adreno devices.
   - **Cons**: Doesn't play nicely with non-Adreno devices.
 - **SGSR Edge**: Almost the same pipeline as SGSR, but with improved edge detection.
+- **Kaiser3**: Kaiser window resampling, a sinc kernel whose lobes are cut off by a Kaiser (Bessel) window instead of a hard radius (radius 3, 36 texel fetches).
+  - **Pros**: Nearly as sharp as Lanczos, but far less prone to ringing artefacts.
+  - **Cons**: Heavy on the GPU.
 
 ### Anisotropy values
 

@@ -746,6 +746,7 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                               PAIR(ScalingFilter, Sgsr, tr("Snapdragon Game Super Resolution")),
                               PAIR(ScalingFilter, SgsrEdge, tr("Snapdragon Game Super Resolution EdgeDir")),
                               PAIR(ScalingFilter, Fsr3, tr("AMD FidelityFX Super Resolution 1, softer sharpening")),
+                              PAIR(ScalingFilter, Kaiser3, tr("Kaiser3")),
                           }});
     translations->insert({Settings::EnumMetadata<Settings::AntiAliasing>::Index(),
                           {

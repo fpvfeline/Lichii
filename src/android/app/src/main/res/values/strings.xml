@@ -1179,6 +1179,7 @@
     <string name="scaling_filter_mmpx" translatable="false">MMPX</string>
     <string name="scaling_filter_sgsr" translatable="false">Snapdragon GSR</string>
     <string name="scaling_filter_sgsr_edge" translatable="false">Snapdragon GSR EdgeDir</string>
+    <string name="scaling_filter_kaiser3" translatable="false">Kaiser3</string>
 
     <!-- Anti-Aliasing -->
     <string name="anti_aliasing_none">None</string>

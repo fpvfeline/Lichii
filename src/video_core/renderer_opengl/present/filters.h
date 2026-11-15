@@ -25,5 +25,6 @@ std::unique_ptr<WindowAdaptPass> MakeLanczos(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeScaleForce(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeMmpx(const Device& device);
+std::unique_ptr<WindowAdaptPass> MakeKaiser3(const Device& device);
 
 } // namespace OpenGL
